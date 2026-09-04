@@ -1,0 +1,5 @@
+PyGithub
+openpyxl
+pytest
+flake8
+ruff
