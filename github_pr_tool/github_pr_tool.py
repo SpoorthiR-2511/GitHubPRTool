@@ -75,6 +75,7 @@ class GitHubPRTool:
        
         auth = Auth.Token(token)
         self.github = Github(auth=auth)
+        self.repo = self.github.get_repo(repo_name)
         
 
     def get_pr_details(
@@ -147,9 +148,7 @@ class GitHubPRTool:
 
         results = []
 
-        pulls = self.repo.get_pulls(
-            state=state
-        )
+        pulls = self.repo.get_pulls(state=state)
 
         for index, pr in enumerate(pulls):
             if index >= count:
