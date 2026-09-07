@@ -28,14 +28,14 @@ jobs:
         run: |
           source venv/bin/activate
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r github_pr_tool/requirements.txt
 
       - name: Run PR Tool
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           source venv/bin/activate
-          python github_pr_tool.py
+          python github_pr_tool/github_pr_tool.py
 
       - name: Upload JSON Report
         uses: actions/upload-artifact@v4
