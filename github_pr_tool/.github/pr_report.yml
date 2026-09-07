@@ -1,274 +1,54 @@
-"""
-GitHub Pull Request Management Tool
+name: Pull Request Report
 
-Features:
-1. Extract PR Details
-2. Update PR Description
-3. List Last N Pull Requests
-4. Export PR data to JSON
-5. Export PR data to Excel
-"""
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
 
-import json
-from typing import Any
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
 
-from github import Github
-from openpyxl import Workbook
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-class PullRequestInfo:
-    """
-    Represents a GitHub Pull Request.
+      - name: Create Virtual Environment
+        run: |
+          python -m venv venv
 
-    Attributes:
-        number (int): Pull request number.
-        title (str): Pull request title.
-        description (str): Pull request description.
-        author (str): Pull request author.
-        files_changed (int): Number of files changed.
-        files_added (int): Number of lines added.
-        files_deleted (int): Number of lines deleted.
-    """
+      - name: Install Dependencies
+        run: |
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
 
-    def __init__(
-        self,
-        number: int,
-        title: str,
-        description: str,
-        author: str,
-        files_changed: int,
-        files_added: int,
-        files_deleted: int,
-    ) -> None:
-        """
-        Initialize PullRequestInfo object.
+      - name: Run PR Tool
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          source venv/bin/activate
+          python github_pr_tool.py
 
-        Args:
-            number (int): Pull request number.
-            title (str): Pull request title.
-            description (str): Pull request description.
-            author (str): Pull request author.
-            files_changed (int): Number of changed files.
-            files_added (int): Number of added lines.
-            files_deleted (int): Number of deleted lines.
-        """
+      - name: Upload JSON Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-json-report
+          path: |
+            prs.json
+            pr_details.json
 
-        self.number = number
-        self.title = title
-        self.description = description
-        self.author = author
-        self.files_changed = files_changed
-        self.files_added = files_added
-        self.files_deleted = files_deleted
-
-
-class GitHubPRTool:
-    """
-    GitHub Pull Request management utility.
-
-    Provides methods for:
-    - Extracting PR details
-    - Updating PR description
-    - Listing pull requests
-    - Generating JSON reports
-    - Generating Excel reports
-    """
-
-    def __init__(
-        self,
-        token: str,
-        repo_name: str,
-    ) -> None:
-        """
-        Initialize GitHub connection.
-
-        Args:
-            token (str): GitHub Personal Access Token.
-            repo_name (str): Repository name.
-        """
-
-        self.github = Github(token)
-        self.repo = self.github.get_repo(repo_name)
-
-    def get_pr_details(
-        self,
-        pr_number: int,
-    ) -> PullRequestInfo:
-        """
-        Fetch details of a pull request.
-
-        Args:
-            pr_number (int): Pull request number.
-
-        Returns:
-            PullRequestInfo: Pull request details.
-        """
-
-        pr = self.repo.get_pull(pr_number)
-
-        additions = 0
-        deletions = 0
-
-        for file in pr.get_files():
-            additions += file.additions
-            deletions += file.deletions
-
-        return PullRequestInfo(
-            number=pr.number,
-            title=pr.title,
-            description=pr.body or "",
-            author=pr.user.login,
-            files_changed=pr.changed_files,
-            files_added=additions,
-            files_deleted=deletions,
-        )
-
-    def update_pr_description(
-        self,
-        pr_number: int,
-        new_description: str,
-    ) -> None:
-        """
-        Update pull request description.
-
-        Args:
-            pr_number (int): Pull request number.
-            new_description (str): New description.
-
-        Returns:
-            None
-        """
-
-        pr = self.repo.get_pull(pr_number)
-
-        pr.edit(body=new_description)
-
-    def list_pull_requests(
-        self,
-        count: int = 10,
-        state: str = "open",
-    ) -> list[dict[str, Any]]:
-        """
-        List latest pull requests.
-
-        Args:
-            count (int): Number of PRs.
-            state (str): open/closed/all.
-
-        Returns:
-            list: Pull request information.
-        """
-
-        results = []
-
-        pulls = self.repo.get_pulls(state=state)
-
-        for pr in pulls[:count]:
-            results.append(
-                {
-                    "pr_number": pr.number,
-                    "title": pr.title,
-                    "author": pr.user.login,
-                }
-            )
-
-        return results
-
-    def write_json(
-        self,
-        data: list[dict[str, Any]],
-        output_file: str,
-    ) -> None:
-        """
-        Write PR information to JSON.
-
-        Args:
-            data (list): PR information.
-            output_file (str): JSON file name.
-        """
-
-        with open(
-            output_file,
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                data,
-                file,
-                indent=4,
-            )
-
-    def write_excel(
-        self,
-        data: list[dict[str, Any]],
-        output_file: str,
-    ) -> None:
-        """
-        Write PR information to Excel.
-
-        Args:
-            data (list): PR information.
-            output_file (str): Excel file name.
-        """
-
-        workbook = Workbook()
-
-        worksheet = workbook.active
-        worksheet.title = "PR Report"
-
-        worksheet.append(
-            [
-                "PR Number",
-                "Title",
-                "Author",
-            ]
-        )
-
-        for row in data:
-            worksheet.append(
-                [
-                    row["pr_number"],
-                    row["title"],
-                    row["author"],
-                ]
-            )
-
-        workbook.save(output_file)
-
-
-def main() -> None:
-    """
-    Application entry point.
-    """
-
-    token = "YOUR_GITHUB_TOKEN"
-
-    repo_name = (
-        "SpoorthiR-2511/GitHubPRTool"
-    )
-
-    tool = GitHubPRTool(
-        token,
-        repo_name,
-    )
-
-    prs = tool.list_pull_requests(
-        count=10,
-        state="open",
-    )
-
-    tool.write_json(
-        prs,
-        "prs.json",
-    )
-
-    tool.write_excel(
-        prs,
-        "prs.xlsx",
-    )
-
-    print("PR reports generated successfully.")
-
-
-if __name__ == "__main__":
-    main()
+      - name: Upload Excel Report
+        uses: actions/upload-artifact@v4
+        with:
+            name: pr-excel-report
+            path: |
+              prs.xlsx
+              pr_details.xlsx
