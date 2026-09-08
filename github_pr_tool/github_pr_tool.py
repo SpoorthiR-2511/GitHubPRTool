@@ -118,12 +118,15 @@ class GitHubPRTool:
             pr_number
         )
 
-        additions = 0
-        deletions = 0
+        files_added = 0
+        files_deleted = 0
 
         for file in pr.get_files():
-            additions += file.additions
-            deletions += file.deletions
+            if file.status == "added":
+                files_added += 1
+
+            elif file.status == "removed":
+                files_deleted += 1
 
         return PullRequestInfo(
             number=pr.number,
@@ -131,8 +134,8 @@ class GitHubPRTool:
             description=pr.body or "",
             author=pr.user.login,
             files_changed=pr.changed_files,
-            files_added=additions,
-            files_deleted=deletions,
+            files_added=files_added,
+            files_deleted=files_deleted,
         )
 
     def update_pr_description(
@@ -413,29 +416,9 @@ def main() -> None:
 
     pr_number = 1
 
-    # Requirement 1
+    # Extract PR details
     pr_details = tool.get_pr_details(
         pr_number
-    )
-
-    print("\nPR DETAILS")
-    print(
-        f"Title: {pr_details.title}"
-    )
-    print(
-        f"Author: {pr_details.author}"
-    )
-    print(
-        f"Description: {pr_details.description}"
-    )
-    print(
-        f"Files Changed: {pr_details.files_changed}"
-    )
-    print(
-        f"Files Added: {pr_details.files_added}"
-    )
-    print(
-        f"Files Deleted: {pr_details.files_deleted}"
     )
 
     tool.write_json(
@@ -443,19 +426,16 @@ def main() -> None:
         "pr_details.json",
     )
 
-    # Requirement 5
+    tool.write_pr_details_excel(
+        pr_details,
+        "pr_details.xlsx",
+    )
+
+    # Read configuration from PR description
     count, repo_name = (
         tool.get_pr_configuration(
             pr_number
         )
-    )
-
-    print(
-        f"\nRepository: {repo_name}"
-    )
-
-    print(
-        f"Number Of PRs: {count}"
     )
 
     tool.repo = (
@@ -464,6 +444,7 @@ def main() -> None:
         )
     )
 
+    # List latest pull requests
     prs = tool.list_pull_requests(
         count=count,
         state="open",
@@ -478,15 +459,10 @@ def main() -> None:
         prs,
         "prs.xlsx",
     )
-    tool.write_pr_details_excel(
-        pr_details,
-        "pr_details.xlsx",
-    )
 
     print(
         "\nReports generated successfully."
     )
-
 
 if __name__ == "__main__":
     main()
