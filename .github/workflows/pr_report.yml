@@ -11,6 +11,8 @@ jobs:
   generate-report:
     runs-on: ubuntu-latest
 
+    environment: github-pr-env
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
@@ -30,25 +32,40 @@ jobs:
           pip install --upgrade pip
           pip install -r github_pr_tool/requirements.txt
 
+      - name: Extract PR Configuration
+        shell: bash
+        run: |
+          PR_BODY='${{ github.event.pull_request.body }}'
+
+          PR_NUMBERS=$(echo "$PR_BODY" | grep -oP 'number_of_prs=\K\d+' || echo "10")
+
+          REPO_URL=$(echo "$PR_BODY" | grep -oP 'repo_url=\Khttps://github\.com/\S+' || true)
+
+          if [ -z "$REPO_URL" ]; then
+            REPO="${{ github.repository }}"
+          else
+            REPO=$(echo "$REPO_URL" | sed 's#https://github.com/##')
+          fi
+
+          echo "PR_NUMBERS=$PR_NUMBERS" >> $GITHUB_ENV
+          echo "REPO=$REPO" >> $GITHUB_ENV
+
       - name: Run PR Tool
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           source venv/bin/activate
-          python github_pr_tool/github_pr_tool.py
 
-      - name: Upload JSON Report
+          python github_pr_tool/github_pr_tool.py \
+            --list_pr \
+            --repo "$REPO" \
+            --numbers "$PR_NUMBERS" \
+            --status merged
+
+      - name: Upload Reports
         uses: actions/upload-artifact@v5
         with:
-          name: pr-json-report
+          name: pr-reports
           path: |
-            prs.json
-            pr_details.json
-
-      - name: Upload Excel Report
-        uses: actions/upload-artifact@v5
-        with:
-            name: pr-excel-report
-            path: |
-              prs.xlsx
-              pr_details.xlsx
+            report.json
+            report.xlsx
