@@ -171,7 +171,7 @@ def write_excel(
 
     worksheet.title = (
         "Pull Requests"
-    )vv
+    )
 
     worksheet.append(
         [
@@ -259,7 +259,7 @@ def parse_arguments() -> (
 
 
 def main() -> None:
-    """
+    """.
     Application entry point.
     """
 
