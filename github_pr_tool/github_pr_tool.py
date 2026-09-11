@@ -1,58 +1,15 @@
 """
 GitHub Pull Request Tool
-
-Features:
-1. Extract pull request details.
-2. Update pull request description.
-3. List last N pull requests.
-4. Export results to JSON and XLSX.
 """
-#test pr change
 
+import argparse
 import json
 import os
 from typing import Any
 
-from github import Auth, Github
+from github import Auth
+from github import Github
 from openpyxl import Workbook
-
-class PullRequestInfo:
-    """
-    Represents a GitHub Pull Request.
-    """
-
-    def __init__(
-        self,
-        number: int,
-        title: str,
-        description: str,
-        author: str,
-        files_changed: int,
-        files_added: int,
-        files_deleted: int,
-    ) -> None:
-        """
-        Initialize pull request information.
-
-        Args:
-            number (int): PR number.
-            title (str): PR title.
-            description (str): PR description.
-            author (str): PR author.
-            files_changed (int): Files changed.
-            files_added (int): Lines added.
-            files_deleted (int): Lines deleted.
-        """
-
-        self.number = number
-        self.title = title
-        self.description = description
-        self.author = author
-        self.files_changed = files_changed
-        self.files_added = files_added
-        self.files_deleted = files_deleted
-
-
 
 
 class GitHubPRTool:
@@ -66,51 +23,45 @@ class GitHubPRTool:
         repo_name: str,
     ) -> None:
         """
-        Connect to GitHub.
-
-        Args:
-            token (str): GitHub token.
-            repo_name (str): owner/repo.
+        Initialize GitHub connection.
         """
 
-       
         auth = Auth.Token(token)
-        self.github = Github(auth=auth)
-        self.repo = self.github.get_repo(repo_name)
-        
+
+        self.github = Github(
+            auth=auth
+        )
+
+        self.repo = (
+            self.github.get_repo(
+                repo_name
+            )
+        )
 
     def get_pr_details(
         self,
         pr_number: int,
-    ) -> PullRequestInfo:
+    ) -> dict[str, Any]:
         """
-        Get details of a PR.
-
-        Args:
-            pr_number (int): Pull request number.
-
-        Returns:
-            PullRequestInfo
+        Get pull request details.
         """
 
-        pr = self.repo.get_pull(pr_number)
-
-        additions = 0
-        deletions = 0
-
-        for file in pr.get_files():
-            additions += file.additions
-            deletions += file.deletions
-
-        return PullRequestInfo(
-            number=pr.number,
-            title=pr.title,
-            description=pr.body or "",
-            author=pr.user.login,
-            files_changed=pr.changed_files,
-            files_added=additions,
-            files_deleted=deletions,
+        pr = self.repo.get_pull(
+            pr_number
         )
+
+
+        return {
+            "pr_number": pr.number,
+            "title": pr.title,
+            "description": pr.body or "",
+            "author": (
+                pr.user.login
+                if pr.user
+                else "Unknown"
+            ),
+            "files_changed": pr.changed_files,
+        }
 
     def update_pr_description(
         self,
@@ -119,153 +70,302 @@ class GitHubPRTool:
     ) -> None:
         """
         Update PR description.
-
-        Args:
-            pr_number (int): PR number.
-            new_description (str): New description.
         """
 
-        pr = self.repo.get_pull(pr_number)
+        pr = self.repo.get_pull(
+            pr_number
+        )
 
         pr.edit(
-            body=new_description,
+            body=new_description
         )
 
     def list_pull_requests(
         self,
-        count: int = 10,
-        state: str = "open",
+        count: int,
+        state: str,
     ) -> list[dict[str, Any]]:
         """
-        List latest PRs.
-
-        Args:
-            count (int): Number of PRs.
-            state (str): open/closed/all.
-
-        Returns:
-            list
+        List pull requests.
         """
 
         results = []
 
-        pulls = self.repo.get_pulls(state=state)
+        if state == "merged":
 
-        for index, pr in enumerate(pulls):
-            if index >= count:
+            pulls = self.repo.get_pulls(
+                state="closed",
+            )
+
+        else:
+
+            pulls = self.repo.get_pulls(
+                state=state,
+            )
+
+        counter = 0
+
+        for pr in pulls:
+
+            if state == "merged" and not pr.merged:
+                continue
+
+            if counter >= count:
                 break
 
+            counter += 1
+
             results.append(
-            {
-                "pr_number": pr.number,
-                "title": pr.title,
-                "author": pr.user.login,
-            }
-        )
+                {
+                    "pr_number": pr.number,
+                    "title": pr.title,
+                    "description": (
+                        pr.body or ""
+                    ),
+                    "author": (
+                        pr.user.login
+                        if pr.user
+                        else "Unknown"
+                    ),
+                    "files_changed": (
+                        pr.changed_files
+                    ),
+                }
+            )
 
         return results
 
-    def write_json(
-        self,
-        data: list[dict[str, Any]],
-        output_file: str,
-    ) -> None:
-        """
-        Export PR data to JSON.
+def write_json(
+    data: list[dict[str, Any]],
+    output_file: str,
+) -> None:
+    """
+    Write JSON report.
+    """
 
-        Args:
-            data (list): PR data.
-            output_file (str): JSON filename.
-        """
+    with open(
+        output_file,
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            data,
+            file,
+            indent=4,
+        )
 
-        with open(
-            output_file,
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                data,
-                file,
-                indent=4,
-            )
 
-    def write_excel(
-        self,
-        data: list[dict[str, Any]],
-        output_file: str,
-    ) -> None:
-        """
-        Export PR data to XLSX.
+def write_excel(
+    data: list[dict[str, Any]],
+    output_file: str,
+) -> None:
+    """
+    Write Excel report.
+    """
 
-        Args:
-            data (list): PR data.
-            output_file (str): Excel filename.
-        """
+    workbook = Workbook()
 
-        workbook = Workbook()
+    worksheet = (
+        workbook.active
+    )
 
-        worksheet = workbook.active
+    worksheet.title = (
+        "Pull Requests"
+    )
 
-        worksheet.title = "Pull Requests"
+    worksheet.append(
+        [
+            "PR Number",
+            "Title",
+            "Description",
+            "Author",
+            "Files Changed",
+        
+        ]
+    )
+
+    for row in data:
 
         worksheet.append(
             [
-                "PR Number",
-                "Title",
-                "Author",
+                row["pr_number"],
+                row["title"],
+                row["description"],
+                row["author"],
+                row["files_changed"],
+              
             ]
         )
 
-        for row in data:
-            worksheet.append(
-                [
-                    row["pr_number"],
-                    row["title"],
-                    row["author"],
-                ]
-            )
+    workbook.save(
+        output_file
+    )
 
-        workbook.save(output_file)
+
+def parse_arguments() -> (
+    argparse.Namespace
+):
+    """
+    Parse CLI arguments.
+    """
+
+    parser = (
+        argparse.ArgumentParser()
+    )
+
+    parser.add_argument(
+        "--repo",
+        required=True,
+    )
+
+    parser.add_argument(
+        "--pr_number",
+        type=int,
+    )
+
+    parser.add_argument(
+        "--get_pr",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--update_pr_description",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--new_desc",
+    )
+
+    parser.add_argument(
+        "--list_pr",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--numbers",
+        type=int,
+        default=10,
+    )
+
+    parser.add_argument(
+        "--status",
+        default="open",
+    )
+
+    return (
+        parser.parse_args()
+    )
 
 
 def main() -> None:
-    """
+    """.
     Application entry point.
     """
 
-    token = os.getenv("GITHUB_TOKEN")
+    try:
 
-    if not token:
-        print("GITHUB_TOKEN not found.")
-        return
+        token = os.getenv(
+            "GITHUB_TOKEN"
+        )
 
-    repo_name = "SpoorthiR-2511/GitHubPRTool"
+        if not token:
+            raise ValueError(
+                "GITHUB_TOKEN "
+                "environment "
+                "variable not found."
+            )
 
-    tool = GitHubPRTool(
-        token,
-        repo_name,
-    )
+        args = parse_arguments()
 
-    prs = tool.list_pull_requests(
-        count=10,
-        state="all",
-    )
+        tool = GitHubPRTool(
+            token,
+            args.repo,
+        )
 
-    if not prs:
-        print("No pull requests found.")
-        return
+        if args.get_pr:
 
-    tool.write_json(
-        prs,
-        "prs.json",
-    )
+            if args.pr_number is None:
+                raise ValueError(
+                    "--pr_number is required with "
+                    "--get_pr"
+                )
 
-    tool.write_excel(
-        prs,
-        "prs.xlsx",
-    )
+            data = [
+                tool.get_pr_details(
+                    args.pr_number
+                )
+            ]
 
-    print("Reports generated successfully.")
+        elif args.update_pr_description:
+
+            if args.pr_number is None:
+                raise ValueError(
+                    "--pr_number is required with "
+                    "--update_pr_description"
+                )
+
+            if not args.new_desc:
+                raise ValueError(
+                    "--new_desc is required with "
+                    "--update_pr_description"
+                )
+
+            tool.update_pr_description(
+                args.pr_number,
+                args.new_desc,
+            )
+
+            print(
+                "PR description "
+                "updated successfully."
+            )
+
+            return
+
+        elif args.list_pr:
+
+            if args.numbers <= 0:
+                raise ValueError(
+                    "--numbers must be greater than 0"
+                )
+
+            data = (
+                tool.list_pull_requests(
+                    count=args.numbers,
+                    state=args.status,
+                )
+            )
+
+        else:
+
+            raise ValueError(
+                "Please select one operation: "
+                "--get_pr, "
+                "--update_pr_description "
+                "or --list_pr"
+            )
+
+        write_json(
+            data,
+            "report.json",
+        )
+
+        write_excel(
+            data,
+            "report.xlsx",
+        )
+
+        print(
+            "Reports generated "
+            "successfully."
+        )
+
+    except Exception as error:
+
+        print(
+            f"Error: {error}"
+        )
 
 
 if __name__ == "__main__":
